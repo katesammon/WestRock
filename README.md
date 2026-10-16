@@ -15,6 +15,20 @@ Open **http://localhost:5173** in your browser. This starts both the API (3001) 
 
 The included `.npmrc` uses `/workspace/.npm-cache` in the cloud. Outside the cloud, the `--cache .npm-cache` option above uses the project folder instead. Node.js 24 is required for the built-in relational SQLite database.
 
+## Automatically receive GitHub changes
+
+Use a Git clone on branch `main`. Start this once per development session instead of `npm run dev`:
+
+```sh
+npm run dev:sync
+```
+
+Keep the terminal open and visit **http://localhost:5173**. This starts the app and checks GitHub `main` every 10 seconds. Changes pushed from Codex are fast-forwarded into your local copy; Vite refreshes the page and the API watches its source. If dependency files change, this mode stops its own servers, installs the locked dependencies, and restarts them. Ordinary local file edits still refresh immediately.
+
+Automatic updates pause while you have local edits/untracked files, use another branch, or have local commits that differ from GitHub. Nothing is reset, stashed, or discarded. Your ignored `.data` company database and `.env` are preserved. Network/authentication failures retry automatically. Git must already be installed and authenticated for the clone. This runs code from your trusted GitHub `main` as it changes; use the regular `npm run dev` when you prefer to control when updates arrive.
+
+Stop with **Ctrl+C**. An already-open page may need a refresh after the servers restart for dependency updates. Dependency installation errors require fixing the reported problem. Do not run both development modes at once. A downloaded ZIP does not contain Git history: clone the repository to use this mode.
+
 ## First end-to-end workflow
 
 1. In **Company data**, add labor classifications and their dated hourly rates. Burdens and taxes are hourly dollar amounts; OT/DT multiply base wage only.

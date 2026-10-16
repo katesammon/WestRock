@@ -9,11 +9,12 @@
     "dev:web": "vite",
     "build": "tsc -b && tsc -p tsconfig.server.json && vite build",
     "lint": "oxlint",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "tsx --test tests/*.test.ts tests/*.test.mjs",
     "test:browser": "playwright test",
     "start": "node --env-file-if-exists=.env --import tsx server/index.ts --production",
     "preview": "vite preview",
-    "format": "prettier --write src server tests docs *.ts *.json README.md"
+    "format": "prettier --write src server tests docs *.ts *.json README.md",
+    "dev:sync": "node scripts/dev-sync.mjs"
   },
   "dependencies": {
     "decimal.js": "^10.6.0",
