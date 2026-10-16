@@ -21,7 +21,7 @@ test('owner configures costs, creates project, reviews report, inspects historic
     })
     .click()
   await expect(
-    page.getByRole('heading', { name: 'Every day builds intelligence.' }),
+    page.getByRole('heading', { name: 'Overview', exact: true }),
   ).toBeVisible()
   const mode = info.project.name
   if (!needsSetup) {

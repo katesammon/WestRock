@@ -354,9 +354,7 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
               {page === 'dashboard' && (
                 <>
                   <Header
-                    eyebrow="THE BIG PICTURE"
-                    title="Every day builds intelligence."
-                    description="A clear view of your projects, field activity, and actual costs."
+                    title="Overview"
                     action={
                       writer && (
                         <Button onClick={newReport}>
