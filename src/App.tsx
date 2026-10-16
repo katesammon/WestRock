@@ -109,8 +109,14 @@ function Auth({
     <div className="auth-layout">
       <div className="auth-story">
         <div className="brand">
-          <span className="brand-mark">W</span> WESTROCK{' '}
-          <span className="brand-caption">FIELD INTELLIGENCE</span>
+          <img
+            className="brand-logo"
+            src="/westrock-logo.svg"
+            alt="WestRock logo"
+            width="40"
+            height="40"
+          />{' '}
+          WESTROCK <span className="brand-caption">FIELD INTELLIGENCE</span>
         </div>
         <div>
           <p className="eyebrow">FROM THE FIELD. FOR THE FUTURE.</p>
@@ -247,7 +253,13 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
     <div className="app-shell">
       <aside className={`sidebar ${mobile ? 'open' : ''}`}>
         <a className="brand" href="#dashboard">
-          <span className="brand-mark">W</span>
+          <img
+            className="brand-logo"
+            src="/westrock-logo.svg"
+            alt="WestRock logo"
+            width="40"
+            height="40"
+          />
           <span>
             WESTROCK<small>FIELD INTELLIGENCE</small>
           </span>
