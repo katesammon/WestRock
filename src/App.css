@@ -1,0 +1,10 @@
+.welcome { max-width: 800px; margin: 0 auto; padding: 12vh 24px 48px; }
+.eyebrow { font-size: .8rem; font-weight: 700; letter-spacing: .18em; }
+h1 { font-size: clamp(2.5rem, 7vw, 4.5rem); line-height: 1.08; letter-spacing: -.04em; margin: 24px 0; }
+p { line-height: 1.7; }
+.demo { margin-top: 48px; padding: 28px; background: white; border: 1px solid #dbe3d6; border-radius: 16px; }
+h2 { font-size: 1.2rem; margin-top: 0; }
+button { border: 1px solid #285347; border-radius: 8px; padding: 12px 20px; color: white; background: #285347; margin: 8px 12px 0 0; }
+button:hover { background: #193b31; }
+.secondary { background: transparent; color: #285347; }
+.secondary:hover { background: #edf2ea; }
