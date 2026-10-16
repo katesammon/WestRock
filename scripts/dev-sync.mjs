@@ -2,11 +2,20 @@ import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
-import { syncMain } from './sync-main.mjs'
+import { syncBranch, currentBranch } from './sync-branch.mjs'
 
 const cwd = fileURLToPath(new URL('../', import.meta.url))
 const npmCli = process.env.npm_execpath
 if (!npmCli) throw new Error('Start this mode with npm run dev:sync.')
+let branch
+try {
+  branch = process.argv[2] || (await currentBranch(cwd))
+} catch {
+  console.error(
+    '[sync] Open a Git clone on a local branch, or use npm run dev without automatic syncing.',
+  )
+  process.exit(1)
+}
 let dev = null
 let stopping = false
 let intentionalStop = false
@@ -93,7 +102,7 @@ async function installDependencies() {
   return true
 }
 async function check() {
-  const result = await syncMain(cwd)
+  const result = await syncBranch(cwd, branch)
   if (result.message !== lastMessage) {
     log(result.message)
     lastMessage = result.message

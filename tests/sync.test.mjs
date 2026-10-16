@@ -6,7 +6,7 @@ import { mkdtemp, mkdir, readFile, writeFile, rm, cp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
-import { syncMain } from '../scripts/sync-main.mjs'
+import { syncBranch, currentBranch } from '../scripts/sync-branch.mjs'
 
 const exec = promisify(execFile)
 async function fixture(t) {
@@ -48,9 +48,9 @@ test('automatic sync fast-forwards while protecting local edits, data, branches,
     'retained company record',
   )
   await writeFile(join(f.local, '.env'), 'TEST_SETTING=retained')
-  assert.equal((await syncMain(f.local)).status, 'current')
+  assert.equal((await syncBranch(f.local)).status, 'current')
   await f.publish({ 'screen.txt': 'Updated screen' })
-  assert.equal((await syncMain(f.local)).status, 'updated')
+  assert.equal((await syncBranch(f.local)).status, 'updated')
   assert.equal(
     await readFile(join(f.local, 'screen.txt'), 'utf8'),
     'Updated screen',
@@ -65,7 +65,7 @@ test('automatic sync fast-forwards while protecting local edits, data, branches,
   )
   await writeFile(join(f.local, 'screen.txt'), 'My local edits')
   await f.publish({ 'screen.txt': 'Another remote update' })
-  assert.equal((await syncMain(f.local)).status, 'paused')
+  assert.equal((await syncBranch(f.local)).status, 'paused')
   assert.equal(
     await readFile(join(f.local, 'screen.txt'), 'utf8'),
     'My local edits',
@@ -76,14 +76,14 @@ test('automatic sync fast-forwards while protecting local edits, data, branches,
     join(f.local, 'my-untracked-work.txt'),
     'Local untracked work',
   )
-  assert.equal((await syncMain(f.local)).status, 'paused')
+  assert.equal((await syncBranch(f.local)).status, 'paused')
   await rm(join(f.local, 'my-untracked-work.txt'))
   await f.git(f.local, 'switch', '-c', 'my-feature')
-  assert.equal((await syncMain(f.local)).status, 'paused')
+  assert.equal((await syncBranch(f.local)).status, 'paused')
   await f.git(f.local, 'switch', 'main')
-  assert.equal((await syncMain(f.local)).status, 'updated')
+  assert.equal((await syncBranch(f.local)).status, 'updated')
   await f.publish({ 'package.json': '{"name":"fixture","version":"1.0.0"}' })
-  assert.equal((await syncMain(f.local)).dependenciesChanged, true)
+  assert.equal((await syncBranch(f.local)).dependenciesChanged, true)
   await f.git(f.local, 'config', 'user.name', 'Local test')
   await f.git(f.local, 'config', 'user.email', 'local@example.test')
   await writeFile(join(f.local, 'my-work.txt'), 'My local commit')
@@ -91,7 +91,7 @@ test('automatic sync fast-forwards while protecting local edits, data, branches,
   await f.git(f.local, 'commit', '-m', 'Local only')
   await f.publish({ 'screen.txt': 'Divergent remote update' })
   const before = await f.git(f.local, 'rev-parse', 'HEAD')
-  assert.equal((await syncMain(f.local)).status, 'paused')
+  assert.equal((await syncBranch(f.local)).status, 'paused')
   assert.equal(await f.git(f.local, 'rev-parse', 'HEAD'), before)
   await f.git(
     f.local,
@@ -100,7 +100,63 @@ test('automatic sync fast-forwards while protecting local edits, data, branches,
     'origin',
     join(f.dir, 'missing.git'),
   )
-  assert.equal((await syncMain(f.local)).status, 'unavailable')
+  assert.equal((await syncBranch(f.local)).status, 'unavailable')
+})
+
+test('development syncing never updates main or consumes main-only commits', async (t) => {
+  const f = await fixture(t)
+  const originalMain = await f.git(f.local, 'rev-parse', 'refs/heads/main')
+  await f.git(f.author, 'switch', '-c', 'development')
+  await f.git(f.author, 'push', 'origin', 'development')
+  await f.git(
+    f.local,
+    'fetch',
+    'origin',
+    'refs/heads/development:refs/remotes/origin/development',
+  )
+  await f.git(
+    f.local,
+    'switch',
+    '--no-track',
+    '-c',
+    'development',
+    'refs/remotes/origin/development',
+  )
+  assert.equal(await currentBranch(f.local), 'development')
+  await writeFile(join(f.author, 'screen.txt'), 'Development preview')
+  await f.git(f.author, 'add', 'screen.txt')
+  await f.git(f.author, 'commit', '-m', 'Preview on development')
+  await f.git(f.author, 'push', 'origin', 'development')
+  const updated = await syncBranch(f.local, 'development')
+  assert.equal(updated.status, 'updated')
+  assert.match(updated.message, /GitHub development/)
+  assert.equal(
+    await readFile(join(f.local, 'screen.txt'), 'utf8'),
+    'Development preview',
+  )
+  assert.equal(
+    await f.git(f.local, 'rev-parse', 'refs/heads/main'),
+    originalMain,
+  )
+  assert.equal((await syncBranch(f.local, 'main')).status, 'paused')
+  await f.git(f.author, 'switch', 'main')
+  await f.publish({ 'screen.txt': 'Main-only update' })
+  assert.equal((await syncBranch(f.local, 'development')).status, 'current')
+  assert.equal(
+    await readFile(join(f.local, 'screen.txt'), 'utf8'),
+    'Development preview',
+  )
+  for (const invalid of [
+    '--force',
+    'main:other',
+    '../main',
+    '@{-1}',
+    'bad name',
+  ])
+    assert.equal((await syncBranch(f.local, invalid)).status, 'paused')
+  await f.git(f.local, 'switch', 'main')
+  assert.equal((await syncBranch(f.local, 'development')).status, 'paused')
+  assert.equal(await f.git(f.local, 'rev-parse', 'HEAD'), originalMain)
 })
 
 test(
@@ -108,6 +164,8 @@ test(
   { timeout: 30000 },
   async (t) => {
     const f = await fixture(t)
+    const originalMain = await f.git(f.local, 'rev-parse', 'refs/heads/main')
+    await f.git(f.author, 'switch', '-c', 'development')
     const npmCli = process.env.npm_execpath
     assert.ok(npmCli, 'Run through npm test')
     await mkdir(join(f.author, 'scripts'))
@@ -116,8 +174,8 @@ test(
       join(f.author, 'scripts/dev-sync.mjs'),
     )
     await cp(
-      new URL('../scripts/sync-main.mjs', import.meta.url),
-      join(f.author, 'scripts/sync-main.mjs'),
+      new URL('../scripts/sync-branch.mjs', import.meta.url),
+      join(f.author, 'scripts/sync-branch.mjs'),
     )
     const pkg = {
       name: 'sync-fixture',
@@ -144,8 +202,21 @@ test(
     )
     await f.git(f.author, 'add', '.')
     await f.git(f.author, 'commit', '-m', 'Add fixture app')
-    await f.git(f.author, 'push', 'origin', 'main')
-    await f.git(f.local, 'pull', '--ff-only')
+    await f.git(f.author, 'push', 'origin', 'development')
+    await f.git(
+      f.local,
+      'fetch',
+      'origin',
+      'refs/heads/development:refs/remotes/origin/development',
+    )
+    await f.git(
+      f.local,
+      'switch',
+      '--no-track',
+      '-c',
+      'development',
+      'refs/remotes/origin/development',
+    )
     const child = spawn(process.execPath, ['scripts/dev-sync.mjs'], {
       cwd: f.local,
       env: { ...process.env, npm_execpath: npmCli },
@@ -200,7 +271,7 @@ test(
     )
     await f.git(f.author, 'add', '.')
     await f.git(f.author, 'commit', '-m', 'Update dependency metadata')
-    await f.git(f.author, 'push', 'origin', 'main')
+    await f.git(f.author, 'push', 'origin', 'development')
     await launched(2)
     assert.match(logs, /Installing locked dependencies/)
     assert.equal(
@@ -208,6 +279,11 @@ test(
         .version,
       '1.0.1',
     )
-    assert.equal((await syncMain(f.local)).status, 'current')
+    assert.equal((await syncBranch(f.local, 'development')).status, 'current')
+    assert.match(logs, /Watching GitHub development/)
+    assert.equal(
+      await f.git(f.local, 'rev-parse', 'refs/heads/main'),
+      originalMain,
+    )
   },
 )
