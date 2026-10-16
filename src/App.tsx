@@ -510,9 +510,7 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
               {page === 'projects' && !id && (
                 <>
                   <Header
-                    eyebrow="JOBS & OPERATIONS"
                     title="Projects"
-                    description="One place for project context, job costs, and field progress."
                     action={
                       manager && (
                         <AddProjectButton
@@ -607,9 +605,7 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
               {page === 'reports' && !id && (
                 <>
                   <Header
-                    eyebrow="CAPTURE THE DAY"
                     title="Daily reports"
-                    description="From the foreman’s account to verified cost and production data."
                     action={
                       writer && (
                         <Button onClick={newReport}>

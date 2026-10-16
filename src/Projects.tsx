@@ -130,9 +130,7 @@ export function ProjectDetail({
         All projects
       </a>
       <Header
-        eyebrow={`JOB ${p.job_number} / ${p.project_type}`}
         title={p.name}
-        description={`${p.client} · ${p.city}, ${p.state}`}
         action={
           <div className="row">
             <Badge value={p.status} />
@@ -197,6 +195,12 @@ export function ProjectDetail({
               subtitle="Geography stays attached to every observation."
             >
               <dl className="details">
+                <div>
+                  <dt>Job / client</dt>
+                  <dd>
+                    Job {p.job_number} · {p.client}
+                  </dd>
+                </div>
                 <div>
                   <dt>
                     <MapPin size={16} />

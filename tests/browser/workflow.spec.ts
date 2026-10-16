@@ -88,7 +88,7 @@ test('owner configures costs, creates project, reviews report, inspects historic
   await dialog.getByLabel('Work date').fill('2026-02-02')
   await dialog.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(
-    page.getByRole('heading', { name: 'Capture today’s work.' }),
+    page.getByRole('heading', { name: 'Daily report', exact: true }),
   ).toBeVisible()
   await page
     .getByLabel('Transcript / field notes')
@@ -115,12 +115,12 @@ test('owner configures costs, creates project, reviews report, inspects historic
     .getByRole('button', { name: 'Confirm approval', exact: true })
     .click()
   await expect(
-    page.getByRole('heading', { name: 'A day of work. Verified.' }),
+    page.getByText('Approved and preserved', { exact: true }),
   ).toBeVisible()
   await expect(page.getByText('$6.00/LF', { exact: true })).toBeVisible()
   await page.reload()
   await expect(
-    page.getByRole('heading', { name: 'A day of work. Verified.' }),
+    page.getByText('Approved and preserved', { exact: true }),
   ).toBeVisible()
   await page.goto('/#intelligence')
   await expect(
@@ -137,7 +137,7 @@ test('owner configures costs, creates project, reviews report, inspects historic
   })
   await link.click()
   await expect(
-    page.getByRole('heading', { name: 'A day of work. Verified.' }),
+    page.getByText('Approved and preserved', { exact: true }),
   ).toBeVisible()
   await page.getByText('Rate snapshot', { exact: true }).click()
   await expect(

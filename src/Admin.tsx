@@ -190,11 +190,7 @@ export function Admin({
   }
   return (
     <>
-      <Header
-        eyebrow="THE FOUNDATION"
-        title="Company data"
-        description="Maintain the people, equipment, and rates behind every calculation."
-      />
+      <Header title="Company data" />
       <div className="tabs scroll-tabs">
         {[
           ['labor', 'Labor & rates'],

@@ -117,9 +117,7 @@ export function IntelligencePage({
   return (
     <>
       <Header
-        eyebrow="YOUR EXPERIENCE, STRUCTURED"
         title="Cost intelligence"
-        description="Traceable actual costs. Comparable production. A stronger foundation for your next bid."
         action={
           <Button
             secondary

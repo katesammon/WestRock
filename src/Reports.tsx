@@ -196,12 +196,7 @@ export function ReportEditor({
         <ArrowLeft size={15} />
         All daily reports
       </a>
-      <Header
-        eyebrow={`JOB ${project?.job_number || ''} / ${formatDate(report.work_date)}`}
-        title={approved ? 'A day of work. Verified.' : 'Capture today’s work.'}
-        description={`${project?.name || 'Project'} · Reported by ${report.author_name}`}
-        action={<Badge value={report.status} />}
-      />
+      <Header title="Daily report" action={<Badge value={report.status} />} />
       <ErrorBox message={error} />
       {busy && (
         <div className="busy-status" role="status">
@@ -281,11 +276,7 @@ export function ReportEditor({
             title={
               approved ? 'Original field account' : '01 / Tell us what happened'
             }
-            subtitle={
-              approved
-                ? 'Source retained alongside the verified values.'
-                : 'Speak naturally, upload a recording, or type your notes.'
-            }
+            subtitle={`${project?.name || 'Project'} · Job ${project?.job_number || ''} · ${formatDate(report.work_date)} · ${report.author_name}`}
           >
             {!approved && canEdit && (
               <div className="voice-capture">
