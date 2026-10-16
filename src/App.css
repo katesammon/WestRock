@@ -75,24 +75,6 @@
 .sidebar-bottom {
   margin-top: auto;
 }
-.workspace-note {
-  margin: 30px 10px 24px;
-  color: #b8b9cb;
-  font-size: 10px;
-}
-.workspace-note p {
-  font-size: 10px;
-  color: #83849d;
-  margin: 7px 0 0 11px;
-}
-.status-dot {
-  display: inline-block;
-  background: #8b8dc7;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  margin-right: 7px;
-}
 .profile {
   border-top: 1px solid #363753;
   display: flex;

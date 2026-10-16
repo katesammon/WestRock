@@ -284,10 +284,6 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="workspace-note">
-            <span className="status-dot" /> Connected to the field
-            <p>Your company. Your cost history.</p>
-          </div>
           <div className="profile">
             <span className="avatar">
               {user.name
