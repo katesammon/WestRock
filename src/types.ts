@@ -1,10 +1,11 @@
-export type Role =
-  'owner' | 'admin' | 'project_manager' | 'foreman' | 'estimator'
+import type { Role, Permission } from '../shared/permissions'
+export type { Role } from '../shared/permissions'
 export interface User {
   id: string
   name: string
   email: string
   role: Role
+  permissions: Permission[]
 }
 export interface Classification {
   id: string
@@ -84,7 +85,7 @@ export interface ReportSummary {
   project_id: string
   author_id: string
   work_date: string
-  status: 'draft' | 'approved'
+  status: 'draft' | 'submitted' | 'approved'
   created_at: string
   approved_at: string | null
   project_name: string
@@ -166,6 +167,7 @@ export interface Observation {
   project_name: string
 }
 export interface Report extends ReportSummary {
+  review_note: string | null
   revision: number
   transcript: string
   audio_key: string | null

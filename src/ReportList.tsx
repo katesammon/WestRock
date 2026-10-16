@@ -22,7 +22,7 @@ export function ReportList({ reports }: { reports: ReportSummary[] }) {
           </div>
           <div className="align-right">
             <Badge value={r.status} />
-            {r.total_cents !== null && (
+            {typeof r.total_cents === 'number' && (
               <strong className="small">{currency(r.total_cents, 2)}</strong>
             )}
           </div>

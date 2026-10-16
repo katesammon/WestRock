@@ -30,3 +30,10 @@ export function transaction<T>(fn: () => T): T {
     throw e
   }
 }
+
+if (
+  !(db.prepare('PRAGMA table_info(reports)').all() as { name: string }[]).some(
+    (c) => c.name === 'submitted_at',
+  )
+)
+  db.exec('ALTER TABLE reports ADD COLUMN submitted_at TEXT')

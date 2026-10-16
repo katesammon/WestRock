@@ -6,6 +6,8 @@ import {
 } from 'node:crypto'
 import type { Request, Response, NextFunction } from 'express'
 import { one, run } from './db.ts'
+import { rolePolicy } from '../shared/permissions.ts'
+import type { Role } from '../shared/permissions.ts'
 export const hashPassword = (password: string) => {
   const salt = randomBytes(16).toString('hex')
   return `${salt}:${scryptSync(password, salt, 64).toString('hex')}`
@@ -24,6 +26,9 @@ export const safeUser = (user: any) => ({
   name: user.name,
   email: user.email,
   role: user.role,
+  permissions: Object.hasOwn(rolePolicy, user.role)
+    ? rolePolicy[user.role as Role].permissions
+    : [],
 })
 export function session(res: Response, userId: string) {
   const token = randomBytes(32).toString('hex')
@@ -57,21 +62,18 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
     tokenHash(tokenFrom(req)),
     Date.now(),
   )
-  if (!user) {
+  const company = one('SELECT id FROM companies ORDER BY created_at LIMIT 1')
+  if (
+    !user ||
+    !Object.hasOwn(rolePolicy, user.role) ||
+    user.company_id !== company?.id
+  ) {
     res.status(401).json({ error: 'Please sign in.' })
     return
   }
   res.locals.user = user
   next()
 }
-export const managers = ['owner', 'admin', 'project_manager']
-export const writers = [...managers, 'foreman']
-export const admins = ['owner', 'admin']
-export const permit =
-  (roles: string[]) => (_req: Request, res: Response, next: NextFunction) =>
-    roles.includes(res.locals.user.role)
-      ? next()
-      : res.status(403).json({ error: 'Your role cannot perform this action.' })
 const attempts = new Map<string, { count: number; until: number }>()
 export function throttle(req: Request, res: Response, next: NextFunction) {
   const key = req.ip || 'local'

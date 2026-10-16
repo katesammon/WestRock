@@ -1478,3 +1478,12 @@ td strong {
     transition: none !important;
   }
 }
+
+.badge.submitted {
+  background: #e8eefc;
+  color: #293c7d;
+}
+.report-dot.submitted {
+  background: #e8eefc;
+  color: #293c7d;
+}

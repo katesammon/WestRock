@@ -1,3 +1,4 @@
+import { hasPermission } from '../shared/permissions'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft,
@@ -166,10 +167,14 @@ export function ReportEditor({
     )
   const project = projects.find((p) => p.id === report.project_id),
     approved = report.status === 'approved',
+    submitted = report.status === 'submitted',
+    canApprove = hasPermission(user.role, 'reports:approve'),
+    canCosts = hasPermission(user.role, 'costs:read'),
     canEdit =
       !approved &&
-      (['owner', 'admin', 'project_manager'].includes(user.role) ||
-        (user.role === 'foreman' && report.author_id === user.id)),
+      !submitted &&
+      hasPermission(user.role, 'reports:write') &&
+      (canApprove || report.author_id === user.id),
     locked = !!busy || recording
   const laborOptions = data.classifications.map((c) => ({
       label: c.name,
@@ -198,6 +203,43 @@ export function ReportEditor({
       </a>
       <Header title="Daily report" action={<Badge value={report.status} />} />
       <ErrorBox message={error} />
+      {report.review_note && report.status === 'draft' && (
+        <div className="notice">
+          <strong>Changes requested:</strong> {report.review_note}
+        </div>
+      )}
+      {submitted && (
+        <div className="notice">
+          <strong>Submitted for manager review.</strong> The field report is
+          locked while its costs are reviewed.{' '}
+          {canApprove && (
+            <Button
+              secondary
+              onClick={() =>
+                void task('Returning report', async () => {
+                  const reason = window.prompt('Explain what needs correction:')
+                  if (!reason) return
+                  await api(`/reports/${id}/return`, 'POST', { reason })
+                  await load()
+                  setCalculation(null)
+                  await refresh()
+                })
+              }
+            >
+              Return for changes
+            </Button>
+          )}
+        </div>
+      )}
+      {approved && !canCosts && (
+        <div className="approved-banner">
+          <ShieldCheck size={23} />
+          <div>
+            <strong>Approved and preserved</strong>
+            <p>Your field report has been approved by a manager.</p>
+          </div>
+        </div>
+      )}
       {busy && (
         <div className="busy-status" role="status">
           <LoaderCircle size={16} className="spin" />
@@ -401,7 +443,7 @@ export function ReportEditor({
               </div>
             )}
           </Panel>
-          {!approved && (
+          {(!approved || !canCosts) && (
             <fieldset disabled={!canEdit || locked} className="report-fieldset">
               <Panel
                 title="02 / Review the structured report"
@@ -712,16 +754,26 @@ export function ReportEditor({
         {!approved && (
           <aside className="report-summary">
             <Panel
-              title="03 / Verify the costs"
-              subtitle="Calculated from your saved inputs and dated rates."
+              title={
+                canApprove ? '03 / Verify the costs' : '03 / Submit for review'
+              }
+              subtitle={
+                canApprove
+                  ? 'Calculated from your saved inputs and dated rates.'
+                  : 'A manager reviews and approves the costs.'
+              }
             >
-              <div className="calculation-icon">
-                <Calculator size={25} />
-              </div>
-              <p className="small muted">
-                No AI arithmetic. No hidden overhead. Every cost is traceable to
-                an input and applicable rate.
-              </p>
+              {canApprove && (
+                <div className="calculation-icon">
+                  <Calculator size={25} />
+                </div>
+              )}
+              {canApprove && (
+                <p className="small muted">
+                  No AI arithmetic. No hidden overhead. Every cost is traceable
+                  to an input and applicable rate.
+                </p>
+              )}
               {canEdit && (
                 <>
                   <Button
@@ -732,24 +784,64 @@ export function ReportEditor({
                     <Save size={16} />
                     {saved ? 'Draft saved' : 'Save draft'}
                   </Button>
-                  <Button
-                    disabled={locked}
-                    onClick={() =>
-                      void task('Checking costs', async () => {
-                        await save()
-                        setCalculation(
-                          await api<Calculation>(
-                            `/reports/${id}/calculate`,
-                            'POST',
-                          ),
-                        )
-                      })
-                    }
-                  >
-                    <Calculator size={16} />
-                    Calculate & review
-                  </Button>
+                  {canApprove && (
+                    <Button
+                      disabled={locked}
+                      onClick={() =>
+                        void task('Checking costs', async () => {
+                          await save()
+                          setCalculation(
+                            await api<Calculation>(
+                              `/reports/${id}/calculate`,
+                              'POST',
+                            ),
+                          )
+                        })
+                      }
+                    >
+                      <Calculator size={16} />
+                      Calculate & review
+                    </Button>
+                  )}
                 </>
+              )}
+              {canEdit && !canApprove && (
+                <Button
+                  disabled={locked}
+                  onClick={() =>
+                    void task('Submitting for review', async () => {
+                      await save()
+                      const current = await api<Report>(`/reports/${id}`)
+                      await api(`/reports/${id}/submit`, 'POST', {
+                        revision: current.revision,
+                      })
+                      await load()
+                      setCalculation(null)
+                      await refresh()
+                    })
+                  }
+                >
+                  <Check size={16} />
+                  Submit for review
+                </Button>
+              )}
+              {submitted && canApprove && (
+                <Button
+                  disabled={locked}
+                  onClick={() =>
+                    void task('Checking costs', async () =>
+                      setCalculation(
+                        await api<Calculation>(
+                          `/reports/${id}/calculate`,
+                          'POST',
+                        ),
+                      ),
+                    )
+                  }
+                >
+                  <Calculator size={16} />
+                  Calculate & review
+                </Button>
               )}
               {calculation && (
                 <div className="calculated">

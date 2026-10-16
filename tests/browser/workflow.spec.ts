@@ -159,3 +159,155 @@ test('owner configures costs, creates project, reviews report, inspects historic
   ).toBeTruthy()
   expect(errors).toEqual([])
 })
+
+test('foreman submits without financial access and assigned manager approves', async ({
+  page,
+}, info) => {
+  const mode = info.project.name
+  await page.goto('/')
+  await page.getByLabel('Email', { exact: true }).fill('browser@example.test')
+  await page
+    .getByLabel('Password', { exact: true })
+    .fill('browser-test-password-123')
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await expect(
+    page.getByRole('heading', { name: 'Overview', exact: true }),
+  ).toBeVisible()
+  async function post(path: string, body: unknown) {
+    const response = await page.request.post('/api' + path, { data: body })
+    expect(response.ok(), await response.text()).toBeTruthy()
+    return response.json()
+  }
+  const foreman = await post('/users', {
+    name: `Field lead ${mode}`,
+    email: `field-${mode}@example.test`,
+    password: 'role-test-password-123',
+    role: 'foreman',
+  })
+  const manager = await post('/users', {
+    name: `Manager ${mode}`,
+    email: `pm-${mode}@example.test`,
+    password: 'role-test-password-123',
+    role: 'project_manager',
+  })
+  const projects = await (await page.request.get('/api/projects')).json()
+  const project = projects.find(
+    (p: { job_number: string }) => p.job_number === `125-${mode}`,
+  )
+  await page.goto('/#projects/' + project.id)
+  await page.getByRole('button', { name: 'Team access', exact: true }).click()
+  for (const member of [
+    { id: foreman.id, name: `Field lead ${mode}`, role: 'foreman' },
+    { id: manager.id, name: `Manager ${mode}`, role: 'project manager' },
+  ]) {
+    await page
+      .getByRole('button', { name: 'Assign team member', exact: true })
+      .click()
+    const dialog = page.getByRole('dialog')
+    await dialog
+      .getByLabel('Team member', { exact: true })
+      .selectOption(member.id)
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(dialog).toHaveCount(0)
+    await expect(
+      page.getByRole('cell', { name: member.name, exact: true }),
+    ).toBeVisible()
+  }
+  async function login(email: string) {
+    await page.request.post('/api/auth/logout')
+    await page.goto('/')
+    await page.reload()
+    await page.getByLabel('Email', { exact: true }).fill(email)
+    await page
+      .getByLabel('Password', { exact: true })
+      .fill('role-test-password-123')
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+    await expect(
+      page.getByRole('heading', { name: 'Overview', exact: true }),
+    ).toBeVisible()
+  }
+  await login(`field-${mode}@example.test`)
+  await expect(
+    page.getByRole('link', { name: 'Cost intelligence', exact: true }),
+  ).toHaveCount(0)
+  await expect(
+    page.getByText('Recorded direct cost', { exact: true }),
+  ).toHaveCount(0)
+  await page.goto('/#admin')
+  await expect(
+    page.getByRole('button', { name: 'Labor & rates', exact: true }),
+  ).toHaveCount(0)
+  await expect(
+    page.getByRole('button', { name: 'Team access', exact: true }),
+  ).toHaveCount(0)
+  await page.goto('/#projects/' + project.id)
+  await expect(
+    page.getByRole('button', { name: 'Project costs', exact: true }),
+  ).toHaveCount(0)
+  await expect(page.getByText('Contract value', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Daily report', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByLabel('Project', { exact: true })).toHaveValue(
+    project.id,
+  )
+  await dialog.getByLabel('Work date').fill('2026-02-03')
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(
+    page.getByRole('heading', { name: 'Daily report', exact: true }),
+  ).toBeVisible()
+  await page
+    .getByLabel('Transcript / field notes')
+    .fill('Test fixture: two operators, eight hours, 400 feet.')
+  await page.getByLabel('Installed quantity', { exact: true }).fill('400')
+  await page.getByLabel('Workday hours · not person-hours').fill('8')
+  await page.getByRole('button', { name: 'Add crew', exact: true }).click()
+  await page
+    .getByLabel('Classification', { exact: true })
+    .selectOption({ label: `Operator ${mode}` })
+  await page.getByLabel('Workers', { exact: true }).fill('2')
+  await page.getByLabel('Regular hours', { exact: true }).fill('8')
+  await page.getByLabel('I confirm all costs').check()
+  await expect(
+    page.getByRole('button', { name: 'Calculate & review', exact: true }),
+  ).toHaveCount(0)
+  await page
+    .getByRole('button', { name: 'Submit for review', exact: true })
+    .click()
+  await expect(
+    page.getByText('Submitted for manager review.', { exact: true }),
+  ).toBeVisible()
+  const reportRoute = await page.evaluate(() => location.hash)
+  await expect(
+    page.getByLabel('Installed quantity', { exact: true }),
+  ).toBeDisabled()
+  await login(`pm-${mode}@example.test`)
+  await page.goto('/' + reportRoute)
+  await expect(
+    page.getByText('Submitted for manager review.', { exact: true }),
+  ).toBeVisible()
+  await page
+    .getByRole('button', { name: 'Calculate & review', exact: true })
+    .click()
+  await expect(page.locator('.cost-total')).toHaveText('$800.00')
+  await page
+    .getByRole('button', { name: 'Approve report', exact: true })
+    .click()
+  await page
+    .getByRole('button', { name: 'Confirm approval', exact: true })
+    .click()
+  await expect(
+    page.getByText('Approved and preserved', { exact: true }),
+  ).toBeVisible()
+  await login(`field-${mode}@example.test`)
+  await page.goto('/' + reportRoute)
+  await expect(
+    page.getByText('Approved and preserved', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('heading', {
+      name: 'Auditable cost breakdown',
+      exact: true,
+    }),
+  ).toHaveCount(0)
+  await expect(page.getByText('$800.00', { exact: true })).toHaveCount(0)
+})

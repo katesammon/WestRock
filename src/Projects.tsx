@@ -1,3 +1,5 @@
+import type { User } from './types'
+import { hasPermission } from '../shared/permissions'
 import { useCallback, useEffect, useState } from 'react'
 import { ArrowLeft, Plus, MapPin } from 'lucide-react'
 import { api, currency, num, formatDate, today } from './api'
@@ -26,6 +28,7 @@ export function ProjectDetail({
   data,
   observations,
   reports,
+  user,
   manager,
   writer,
   refresh,
@@ -36,11 +39,15 @@ export function ProjectDetail({
   data: Data
   observations: Observation[]
   reports: ReportSummary[]
+  user: User
   manager: boolean
   writer: boolean
   refresh: () => Promise<void>
   onReport: () => void
 }) {
+  const canRates = hasPermission(user.role, 'rates:read'),
+    canCosts = hasPermission(user.role, 'costs:read'),
+    canAssign = hasPermission(user.role, 'projects:assign')
   const p = projects.find((p) => p.id === id),
     [tab, setTab] = useState('overview'),
     [rates, setRates] = useState<ItemRate[]>([]),
@@ -48,8 +55,11 @@ export function ProjectDetail({
     [closing, setClosing] = useState<ItemRate | null>(null),
     [error, setError] = useState('')
   const load = useCallback(
-    () => api<ItemRate[]>(`/projects/${id}/rates`).then(setRates),
-    [id],
+    () =>
+      canRates
+        ? api<ItemRate[]>(`/projects/${id}/rates`).then(setRates)
+        : Promise.resolve(),
+    [id, canRates],
   )
   useEffect(() => {
     Promise.resolve()
@@ -151,7 +161,8 @@ export function ProjectDetail({
       <div className="tabs">
         {[
           ['overview', 'Overview'],
-          ['costs', 'Project costs'],
+          ...(canRates ? [['costs', 'Project costs']] : []),
+          ...(canAssign ? [['access', 'Team access']] : []),
           ['reports', 'Daily reports'],
         ].map(([key, label]) => (
           <button
@@ -166,29 +177,45 @@ export function ProjectDetail({
       <ErrorBox message={error} />
       {tab === 'overview' && (
         <>
-          <div className="metrics">
-            <Metric
-              label="Actual direct cost"
-              value={currency(cost)}
-              note="Approved reports"
-              accent
-            />
-            <Metric
-              label="Direct-cost budget"
-              value={currency(p.budget_cents)}
-              note={`Remaining: ${currency(p.budget_cents - cost)}`}
-            />
-            <Metric
-              label="Installed quantity"
-              value={`${num(qty)} ${p.production_unit}`}
-              note={p.primary_activity}
-            />
-            <Metric
-              label="Scope complete"
-              value={`${num(pct)}%`}
-              note={`Contract: ${num(p.contract_quantity)} ${p.production_unit}`}
-            />
-          </div>
+          {canCosts ? (
+            <div className="metrics">
+              <Metric
+                label="Actual direct cost"
+                value={currency(cost)}
+                note="Approved reports"
+                accent
+              />
+              <Metric
+                label="Direct-cost budget"
+                value={currency(p.budget_cents)}
+                note={`Remaining: ${currency(p.budget_cents - cost)}`}
+              />
+              <Metric
+                label="Installed quantity"
+                value={`${num(qty)} ${p.production_unit}`}
+                note={p.primary_activity}
+              />
+              <Metric
+                label="Scope complete"
+                value={`${num(pct)}%`}
+                note={`Contract: ${num(p.contract_quantity)} ${p.production_unit}`}
+              />
+            </div>
+          ) : (
+            <div className="metrics">
+              <Metric
+                label="Your daily reports"
+                value={String(
+                  reports.filter((r) => r.project_id === id).length,
+                )}
+              />
+              <Metric
+                label="Contract quantity"
+                value={`${num(p.contract_quantity)} ${p.production_unit}`}
+                note={p.primary_activity}
+              />
+            </div>
+          )}
           <div className="dashboard-grid">
             <Panel
               title="Project context"
@@ -217,10 +244,12 @@ export function ProjectDetail({
                     {p.end_date ? formatDate(p.end_date) : 'Not set'}
                   </dd>
                 </div>
-                <div>
-                  <dt>Contract value</dt>
-                  <dd>{currency(p.contract_cents)}</dd>
-                </div>
+                {canCosts && (
+                  <div>
+                    <dt>Contract value</dt>
+                    <dd>{currency(p.contract_cents)}</dd>
+                  </div>
+                )}
                 <div>
                   <dt>Primary activity</dt>
                   <dd>
@@ -233,29 +262,34 @@ export function ProjectDetail({
                 </div>
               </dl>
             </Panel>
-            <Panel
-              title="Cost composition"
-              subtitle="Direct costs only · excludes overhead and profit"
-            >
-              {(['labor', 'equipment', 'material', 'disposal'] as const).map(
-                (category) => {
-                  const c = obs.reduce((s, o) => s + o[`${category}_cents`], 0)
-                  return (
-                    <div className="cost-category" key={category}>
-                      <div className="row spread">
-                        <span className="capitalize">{category}</span>
-                        <strong>{currency(c, 2)}</strong>
+            {canCosts && (
+              <Panel
+                title="Cost composition"
+                subtitle="Direct costs only · excludes overhead and profit"
+              >
+                {(['labor', 'equipment', 'material', 'disposal'] as const).map(
+                  (category) => {
+                    const c = obs.reduce(
+                      (s, o) => s + o[`${category}_cents`],
+                      0,
+                    )
+                    return (
+                      <div className="cost-category" key={category}>
+                        <div className="row spread">
+                          <span className="capitalize">{category}</span>
+                          <strong>{currency(c, 2)}</strong>
+                        </div>
+                        <div className={'cost-bar ' + category}>
+                          <span
+                            style={{ width: `${cost ? (c / cost) * 100 : 0}%` }}
+                          />
+                        </div>
                       </div>
-                      <div className={'cost-bar ' + category}>
-                        <span
-                          style={{ width: `${cost ? (c / cost) * 100 : 0}%` }}
-                        />
-                      </div>
-                    </div>
-                  )
-                },
-              )}
-            </Panel>
+                    )
+                  },
+                )}
+              </Panel>
+            )}
           </div>
           <Panel title="Recent field reports">
             <ReportList
@@ -269,7 +303,7 @@ export function ProjectDetail({
           <ReportList reports={reports.filter((r) => r.project_id === id)} />
         </Panel>
       )}
-      {tab === 'costs' && (
+      {tab === 'costs' && canRates && (
         <>
           <div className="notice">
             <strong>Job-specific rates take precedence.</strong> Rates are
@@ -341,6 +375,7 @@ export function ProjectDetail({
           </Panel>
         </>
       )}
+      {tab === 'access' && canAssign && <ProjectAccess projectId={id} />}
       {dialog && (
         <FormDialog
           title={
@@ -378,6 +413,122 @@ export function ProjectDetail({
           onClose={() => setClosing(null)}
           onSubmit={async (v) => {
             await api(`/projects/${id}/rates/${closing.id}/close`, 'POST', v)
+            await load()
+          }}
+        />
+      )}
+    </>
+  )
+}
+
+function ProjectAccess({ projectId }: { projectId: string }) {
+  const [members, setMembers] = useState<(User & { active: number })[]>([]),
+    [users, setUsers] = useState<(User & { active: number })[]>([]),
+    [adding, setAdding] = useState(false),
+    [error, setError] = useState(''),
+    [busy, setBusy] = useState(false)
+  const load = useCallback(async () => {
+    const [m, u] = await Promise.all([
+      api<typeof members>(`/projects/${projectId}/members`),
+      api<typeof users>('/users'),
+    ])
+    setMembers(m)
+    setUsers(u)
+  }, [projectId])
+  useEffect(() => {
+    Promise.resolve()
+      .then(load)
+      .catch((e) => setError(e.message))
+  }, [load])
+  return (
+    <>
+      <ErrorBox message={error} />
+      <Panel
+        title="Project assignments"
+        subtitle="Foremen and project managers need an assignment to access this job. Owners/admins have company-wide access; estimators can view approved cost history."
+        action={
+          <Button onClick={() => setAdding(true)}>
+            <Plus size={16} />
+            Assign team member
+          </Button>
+        }
+      >
+        {!members.length ? (
+          <Empty title="No assigned team members">
+            Assign project managers and foremen to give them access to this job.
+          </Empty>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Role</th>
+                  <th>Access</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {members.map((m) => (
+                  <tr key={m.id}>
+                    <td>{m.name}</td>
+                    <td>
+                      <Badge value={m.role} />
+                    </td>
+                    <td>{m.active ? 'Active' : 'Account disabled'}</td>
+                    <td>
+                      <Button
+                        secondary
+                        disabled={busy}
+                        onClick={async () => {
+                          setBusy(true)
+                          try {
+                            await api(
+                              `/projects/${projectId}/members/${m.id}`,
+                              'DELETE',
+                            )
+                            await load()
+                          } catch (e) {
+                            setError((e as Error).message)
+                          } finally {
+                            setBusy(false)
+                          }
+                        }}
+                      >
+                        Remove assignment
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
+      {adding && (
+        <FormDialog
+          title="Assign project access"
+          fields={[
+            {
+              name: 'user_id',
+              label: 'Team member',
+              required: true,
+              options: users
+                .filter(
+                  (u) =>
+                    u.active &&
+                    ['foreman', 'project_manager'].includes(u.role) &&
+                    !members.some((m) => m.id === u.id),
+                )
+                .map((u) => ({
+                  value: u.id,
+                  label: `${u.name} · ${u.role.replaceAll('_', ' ')}`,
+                })),
+            },
+          ]}
+          onClose={() => setAdding(false)}
+          onSubmit={async (v) => {
+            await api(`/projects/${projectId}/members/${v.user_id}`, 'PUT')
             await load()
           }}
         />

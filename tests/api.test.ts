@@ -412,6 +412,14 @@ test(
       },
       201,
     )
+    const foremanUser = (await request('/users')).value.find(
+      (u: any) => u.email === 'foreman@example.test',
+    )
+    await request(
+      `/projects/${project.id}/members/${foremanUser.id}`,
+      'PUT',
+      {},
+    )
     const foreman = (
       await request('/auth/login', 'POST', {
         email: 'foreman@example.test',

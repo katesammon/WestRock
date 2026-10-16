@@ -11,7 +11,7 @@ npm ci --cache .npm-cache
 npm run dev
 ```
 
-Open **http://localhost:5173** in your browser. This starts both the API (3001) and web app (5173). Create the first company/owner account, add company data, and create a project. No example rates or company data are inserted. Additional team accounts are created in Company data → Team access. Passwords require at least 12 characters.
+Open **http://localhost:5173** in your browser. This starts both the API (3001) and web app (5173). Create the first company/owner account, add company data, and create a project. No example rates or company data are inserted. Additional team accounts are created in Company data → Team access. Owners/admins assign foremen and project managers to jobs in each project’s Team access tab. Passwords require at least 12 characters.
 
 The included `.npmrc` uses `/workspace/.npm-cache` in the cloud. Outside the cloud, the `--cache .npm-cache` option above uses the project folder instead. Node.js 24 is required for the built-in relational SQLite database.
 
@@ -35,7 +35,7 @@ Stop with **Ctrl+C**. An already-open page may need a refresh after the servers 
 2. Add equipment, materials, and disposal items with explicit units, then dated company rates. Hourly equipment can derive its rate from annual ownership/operating costs and utilization.
 3. In **Projects**, create the job with state → region → county → city, primary activity, contract quantity, and direct-cost budget. Add project-specific rate overrides in its Project costs tab.
 4. Create a **Daily report** for that job/date. Record/upload audio or enter notes. Complete the structured labor, item usage, and production fields. Unknown inputs stay blank. Previous approved crew/equipment can be reused explicitly.
-5. **Calculate & review** selects applicable rates on the work date and shows missing inputs, line items, and snapshots. Confirm the inputs and approve. Approval permanently records the report, direct costs, production/hour, and historical cost observation.
+5. Foremen select **Submit for review**; an assigned manager reviews and approves their costs or returns the report for corrections. Managers can also calculate their own drafts directly. **Calculate & review** selects applicable rates on the work date and shows missing inputs, line items, and snapshots. Confirm the inputs and approve. Approval permanently records the report, direct costs, production/hour, and historical cost observation.
 6. Inspect the project overview and **Cost intelligence**, filter by region/project/activity/depth/date, inspect underlying reports, or export observations to CSV.
 
 One costed activity per report prevents double allocation of daily costs. Split multiple production activities into separate reports and attribute their costs deliberately. Partial reports without production/labor remain drafts. Overhead, project indirect costs, and profit are excluded from all displayed direct costs.
@@ -75,3 +75,7 @@ Implemented: single-company role-based sign-in; employee/classification catalogs
 Not yet implemented: spreadsheet import, full equipment finance/depreciation schedules, insurance/overhead databases and allocation, advanced cost alerts, estimating, plan processing, SSO/password recovery email, PostgreSQL/hosted object storage, and production deployment. This is the first operational prototype, not the complete long-term platform.
 
 See [architecture and assumptions](docs/architecture.md) and [database schema](server/schema.sql).
+
+## Access control
+
+The API enforces named permissions and project assignments. Foremen see only their own field reports on assigned jobs and cannot retrieve rates or approve costs. Project managers manage assigned jobs; estimators read company rates and approved history; owners/admins manage users, assignments, and company data. Role changes and account disablement revoke sessions immediately. Existing project managers/foremen need explicit project assignments after upgrading. See [the permission matrix and extension guidance](docs/permissions.md).

@@ -1,3 +1,4 @@
+import { hasPermission } from '../shared/permissions'
 import { useCallback, useEffect, useState } from 'react'
 import { Plus, LockKeyhole, ShieldCheck } from 'lucide-react'
 import { api, currency, today } from './api'
@@ -16,6 +17,7 @@ type Dialog = {
   title: string
   description?: string
   path: string
+  method?: string
   fields: FieldConfig[]
   transform?: (v: Record<string, string>) => unknown
 }
@@ -46,7 +48,9 @@ export function Admin({
   user: User
   refresh: () => Promise<void>
 }) {
-  const [tab, setTab] = useState('labor'),
+  const [tab, setTab] = useState(
+      hasPermission(user.role, 'rates:read') ? 'labor' : 'account',
+    ),
     [dialog, setDialog] = useState<Dialog | null>(null),
     [users, setUsers] = useState<(User & { active: number })[]>([]),
     [audit, setAudit] = useState<
@@ -59,17 +63,19 @@ export function Admin({
       }[]
     >([]),
     [error, setError] = useState('')
-  const editable = ['owner', 'admin'].includes(user.role)
+  const editable = hasPermission(user.role, 'rates:manage'),
+    manageUsers = hasPermission(user.role, 'users:manage'),
+    canAudit = hasPermission(user.role, 'audit:read')
   const loadPrivate = useCallback(async () => {
-    if (editable) {
-      const [u, a] = await Promise.all([
-        api<(User & { active: number })[]>('/users'),
-        api<typeof audit>('/audit'),
-      ])
-      setUsers(u)
-      setAudit(a)
-    }
-  }, [editable])
+    const [u, a] = await Promise.all([
+      manageUsers
+        ? api<(User & { active: number })[]>('/users')
+        : Promise.resolve([]),
+      canAudit ? api<typeof audit>('/audit') : Promise.resolve([]),
+    ])
+    setUsers(u)
+    setAudit(a)
+  }, [manageUsers, canAudit])
   useEffect(() => {
     Promise.resolve()
       .then(loadPrivate)
@@ -193,17 +199,19 @@ export function Admin({
       <Header title="Company data" />
       <div className="tabs scroll-tabs">
         {[
-          ['labor', 'Labor & rates'],
-          ['equipment', 'Equipment'],
-          ['material', 'Materials'],
-          ['disposal', 'Disposal'],
-          ['employees', 'Employees'],
-          ...(editable
+          ...(hasPermission(user.role, 'rates:read')
             ? [
-                ['team', 'Team access'],
-                ['audit', 'Audit trail'],
+                ['labor', 'Labor & rates'],
+                ['equipment', 'Equipment'],
+                ['material', 'Materials'],
+                ['disposal', 'Disposal'],
               ]
             : []),
+          ...(hasPermission(user.role, 'employees:read')
+            ? [['employees', 'Employees']]
+            : []),
+          ...(manageUsers ? [['team', 'Team access']] : []),
+          ...(canAudit ? [['audit', 'Audit trail']] : []),
           ['account', 'My account'],
         ].map(([id, label]) => (
           <button
@@ -216,13 +224,13 @@ export function Admin({
         ))}
       </div>
       <ErrorBox message={error} />
-      {!editable && (
+      {!editable && hasPermission(user.role, 'rates:read') && (
         <div className="notice">
           Company master data is managed by administrators. Your role has read
           access.
         </div>
       )}
-      {tab === 'labor' && (
+      {tab === 'labor' && hasPermission(user.role, 'rates:read') && (
         <>
           <Panel
             title="Labor classifications"
@@ -368,142 +376,143 @@ export function Admin({
           </Panel>
         </>
       )}
-      {['equipment', 'material', 'disposal'].includes(tab) && (
-        <>
-          <Panel
-            title={
-              tab === 'equipment'
-                ? 'Equipment master'
-                : tab === 'material'
-                  ? 'Material catalog'
-                  : 'Disposal catalog'
-            }
-            subtitle="Units are explicit. The app never guesses quantity conversions."
-            action={
-              editable && (
-                <Button onClick={addItem}>
-                  <Plus size={16} />
-                  Add item
-                </Button>
-              )
-            }
-          >
-            {!data.items.some((i) => i.category === tab) ? (
-              <Empty title="Add your company’s cost items">
-                Define the items and units used in field reports. Add a dated
-                rate to make them available for costing.
-              </Empty>
-            ) : (
+      {['equipment', 'material', 'disposal'].includes(tab) &&
+        hasPermission(user.role, 'rates:read') && (
+          <>
+            <Panel
+              title={
+                tab === 'equipment'
+                  ? 'Equipment master'
+                  : tab === 'material'
+                    ? 'Material catalog'
+                    : 'Disposal catalog'
+              }
+              subtitle="Units are explicit. The app never guesses quantity conversions."
+              action={
+                editable && (
+                  <Button onClick={addItem}>
+                    <Plus size={16} />
+                    Add item
+                  </Button>
+                )
+              }
+            >
+              {!data.items.some((i) => i.category === tab) ? (
+                <Empty title="Add your company’s cost items">
+                  Define the items and units used in field reports. Add a dated
+                  rate to make them available for costing.
+                </Empty>
+              ) : (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Item ID</th>
+                        <th>Description</th>
+                        <th>Usage / pricing unit</th>
+                        <th>Specification / vendor</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.items
+                        .filter((i) => i.category === tab)
+                        .map((i) => {
+                          const meta = JSON.parse(i.metadata_json)
+                          return (
+                            <tr key={i.id}>
+                              <td>{i.code}</td>
+                              <td>
+                                <strong>{i.name}</strong>
+                              </td>
+                              <td>{i.unit}</td>
+                              <td>
+                                {meta.specification || '—'}
+                                <small>{meta.vendor}</small>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Panel>
+            <Panel
+              title="Dated company rates"
+              subtitle="Project rates can override these without changing the company standard."
+              action={
+                editable && (
+                  <Button onClick={addItemRate}>
+                    <Plus size={16} />
+                    Cost rate
+                  </Button>
+                )
+              }
+            >
               <div className="table-wrap">
                 <table>
                   <thead>
                     <tr>
-                      <th>Item ID</th>
-                      <th>Description</th>
-                      <th>Usage / pricing unit</th>
-                      <th>Specification / vendor</th>
+                      <th>Item</th>
+                      <th>Rate</th>
+                      <th>Effective</th>
+                      <th>Expires</th>
+                      <th>Basis</th>
+                      {editable && <th />}
                     </tr>
                   </thead>
                   <tbody>
-                    {data.items
-                      .filter((i) => i.category === tab)
-                      .map((i) => {
-                        const meta = JSON.parse(i.metadata_json)
+                    {data.itemRates
+                      .filter(
+                        (r) =>
+                          data.items.find((i) => i.id === r.item_id)
+                            ?.category === tab,
+                      )
+                      .map((r) => {
+                        const i = data.items.find((i) => i.id === r.item_id),
+                          basis = JSON.parse(r.basis_json || '{}')
                         return (
-                          <tr key={i.id}>
-                            <td>{i.code}</td>
+                          <tr key={r.id}>
                             <td>
-                              <strong>{i.name}</strong>
+                              <strong>{i?.name}</strong>
                             </td>
-                            <td>{i.unit}</td>
                             <td>
-                              {meta.specification || '—'}
-                              <small>{meta.vendor}</small>
+                              {currency(r.rate_cents, 2)} / {i?.unit}
                             </td>
+                            <td>{r.effective_date}</td>
+                            <td>{r.expiration_date || 'Open'}</td>
+                            <td>
+                              <details>
+                                <summary>
+                                  {basis.derived
+                                    ? 'Ownership + operating'
+                                    : 'Manual standard rate'}
+                                </summary>
+                                <pre>{JSON.stringify(basis, null, 2)}</pre>
+                              </details>
+                            </td>
+                            {editable && (
+                              <td>
+                                {!r.expiration_date && (
+                                  <button
+                                    className="text-link"
+                                    onClick={() => closeRate(r, 'item')}
+                                  >
+                                    Close period
+                                  </button>
+                                )}
+                              </td>
+                            )}
                           </tr>
                         )
                       })}
                   </tbody>
                 </table>
               </div>
-            )}
-          </Panel>
-          <Panel
-            title="Dated company rates"
-            subtitle="Project rates can override these without changing the company standard."
-            action={
-              editable && (
-                <Button onClick={addItemRate}>
-                  <Plus size={16} />
-                  Cost rate
-                </Button>
-              )
-            }
-          >
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Item</th>
-                    <th>Rate</th>
-                    <th>Effective</th>
-                    <th>Expires</th>
-                    <th>Basis</th>
-                    {editable && <th />}
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.itemRates
-                    .filter(
-                      (r) =>
-                        data.items.find((i) => i.id === r.item_id)?.category ===
-                        tab,
-                    )
-                    .map((r) => {
-                      const i = data.items.find((i) => i.id === r.item_id),
-                        basis = JSON.parse(r.basis_json || '{}')
-                      return (
-                        <tr key={r.id}>
-                          <td>
-                            <strong>{i?.name}</strong>
-                          </td>
-                          <td>
-                            {currency(r.rate_cents, 2)} / {i?.unit}
-                          </td>
-                          <td>{r.effective_date}</td>
-                          <td>{r.expiration_date || 'Open'}</td>
-                          <td>
-                            <details>
-                              <summary>
-                                {basis.derived
-                                  ? 'Ownership + operating'
-                                  : 'Manual standard rate'}
-                              </summary>
-                              <pre>{JSON.stringify(basis, null, 2)}</pre>
-                            </details>
-                          </td>
-                          {editable && (
-                            <td>
-                              {!r.expiration_date && (
-                                <button
-                                  className="text-link"
-                                  onClick={() => closeRate(r, 'item')}
-                                >
-                                  Close period
-                                </button>
-                              )}
-                            </td>
-                          )}
-                        </tr>
-                      )
-                    })}
-                </tbody>
-              </table>
-            </div>
-          </Panel>
-        </>
-      )}
-      {tab === 'employees' && (
+            </Panel>
+          </>
+        )}
+      {tab === 'employees' && hasPermission(user.role, 'employees:read') && (
         <Panel
           title="Employee directory"
           subtitle="Crew costing currently uses classification counts; employee records prepare for individual time reporting."
@@ -567,7 +576,7 @@ export function Admin({
           )}
         </Panel>
       )}
-      {tab === 'team' && editable && (
+      {tab === 'team' && manageUsers && (
         <Panel
           title="Workspace access"
           subtitle="Create accounts for your team. Share temporary passwords securely and ask users to change them."
@@ -613,6 +622,8 @@ export function Admin({
                   <th>Name</th>
                   <th>Email</th>
                   <th>Role</th>
+                  <th>Status</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
@@ -623,6 +634,48 @@ export function Admin({
                     <td>
                       <Badge value={u.role} />
                     </td>
+                    <td>{u.active ? 'Active' : 'Disabled'}</td>
+                    <td>
+                      {u.id !== user.id && u.role !== 'owner' && (
+                        <Button
+                          secondary
+                          onClick={() =>
+                            setDialog({
+                              title: `Manage access · ${u.name}`,
+                              path: `/users/${u.id}`,
+                              method: 'PATCH',
+                              fields: [
+                                field('role', 'Role', {
+                                  value: u.role,
+                                  options: [
+                                    'admin',
+                                    'project_manager',
+                                    'foreman',
+                                    'estimator',
+                                  ].map((v) => ({
+                                    value: v,
+                                    label: v.replaceAll('_', ' '),
+                                  })),
+                                }),
+                                field('active', 'Account access', {
+                                  value: String(!!u.active),
+                                  options: [
+                                    { value: 'true', label: 'Enabled' },
+                                    { value: 'false', label: 'Disabled' },
+                                  ],
+                                }),
+                              ],
+                              transform: (v) => ({
+                                ...v,
+                                active: v.active === 'true',
+                              }),
+                            })
+                          }
+                        >
+                          Manage access
+                        </Button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -630,7 +683,7 @@ export function Admin({
           </div>
         </Panel>
       )}
-      {tab === 'audit' && editable && (
+      {tab === 'audit' && canAudit && (
         <Panel
           title="Audit trail"
           subtitle="Latest 100 recorded actions. Financial snapshots are stored on the report."
@@ -705,7 +758,7 @@ export function Admin({
           onSubmit={async (v) => {
             await api(
               dialog.path,
-              'POST',
+              dialog.method || 'POST',
               dialog.transform ? dialog.transform(v) : v,
             )
             await refresh()

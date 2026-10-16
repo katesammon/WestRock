@@ -1,3 +1,4 @@
+import { hasPermission } from '../shared/permissions'
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
@@ -207,22 +208,25 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
       api<Data>('/data'),
       api<Project[]>('/projects'),
       api<ReportSummary[]>('/reports'),
-      api<Intelligence>('/observations'),
+      hasPermission(user.role, 'costs:read')
+        ? api<Intelligence>('/observations')
+        : Promise.resolve({ observations: [], groups: [] }),
     ])
     setData(d)
     setProjects(p)
     setReports(r)
     setIntel(i)
     setError('')
-  }, [])
+  }, [user.role])
   useEffect(() => {
     Promise.resolve()
       .then(refresh)
       .catch((e) => setError(e.message))
   }, [refresh])
-  const admin = ['owner', 'admin'].includes(user.role),
-    manager = admin || user.role === 'project_manager',
-    writer = manager || user.role === 'foreman'
+  const admin = hasPermission(user.role, 'rates:manage'),
+    manager = hasPermission(user.role, 'projects:edit'),
+    writer = hasPermission(user.role, 'reports:write'),
+    canCosts = hasPermission(user.role, 'costs:read')
   const page = route.split('/')[0],
     id = route.split('/')[1]
   const newReport = () => {
@@ -266,22 +270,31 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
         </a>
         <div className="workspace-label">WORKSPACE</div>
         <nav>
-          {navigation.map((n) => (
-            <a
-              href={'#' + n.id}
-              className={page === n.id ? 'selected' : ''}
-              key={n.id}
-            >
-              <n.icon size={19} />
-              {n.label}
-              {n.id === 'reports' &&
-                reports.some((r) => r.status === 'draft') && (
-                  <span className="nav-count">
-                    {reports.filter((r) => r.status === 'draft').length}
-                  </span>
-                )}
-            </a>
-          ))}
+          {navigation
+            .filter((n) => n.id !== 'intelligence' || canCosts)
+            .map((n) => (
+              <a
+                href={'#' + n.id}
+                className={page === n.id ? 'selected' : ''}
+                key={n.id}
+              >
+                <n.icon size={19} />
+                {n.label}
+                {n.id === 'reports' &&
+                  reports.some(
+                    (r) => r.status === 'draft' || r.status === 'submitted',
+                  ) && (
+                    <span className="nav-count">
+                      {
+                        reports.filter(
+                          (r) =>
+                            r.status === 'draft' || r.status === 'submitted',
+                        ).length
+                      }
+                    </span>
+                  )}
+              </a>
+            ))}
         </nav>
         <div className="sidebar-bottom">
           <div className="profile">
@@ -367,22 +380,51 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
                       note={`${projects.length} projects in your workspace`}
                     />
                     <Metric
-                      label="Recorded direct cost"
-                      value={currency(total)}
-                      note="Approved reports only"
+                      label={
+                        canCosts ? 'Recorded direct cost' : 'Submitted reports'
+                      }
+                      value={
+                        canCosts
+                          ? currency(total)
+                          : String(
+                              reports.filter((r) => r.status === 'submitted')
+                                .length,
+                            )
+                      }
+                      note={
+                        canCosts
+                          ? 'Approved reports only'
+                          : 'Awaiting manager review'
+                      }
                       accent
                     />
                     <Metric
                       label="Reports awaiting review"
                       value={String(
-                        reports.filter((r) => r.status === 'draft').length,
+                        reports.filter(
+                          (r) =>
+                            r.status === 'draft' || r.status === 'submitted',
+                        ).length,
                       )}
                       note="Drafts excluded from costs"
                     />
                     <Metric
-                      label="Cost observations"
-                      value={num(intel.observations.length)}
-                      note="Verified field data points"
+                      label={
+                        canCosts ? 'Cost observations' : 'Approved reports'
+                      }
+                      value={
+                        canCosts
+                          ? num(intel.observations.length)
+                          : String(
+                              reports.filter((r) => r.status === 'approved')
+                                .length,
+                            )
+                      }
+                      note={
+                        canCosts
+                          ? 'Verified field data points'
+                          : 'Your verified field reports'
+                      }
                     />
                   </div>
                   {!projects.length && (
@@ -459,26 +501,34 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
                                   JOB {p.job_number} · {p.region}
                                 </span>
                                 <h3>{p.name}</h3>
-                                <div className="progress-track">
-                                  <span
-                                    style={{
-                                      width: `${Math.min(100, progress)}%`,
-                                    }}
-                                  />
-                                </div>
+                                {canCosts && (
+                                  <div className="progress-track">
+                                    <span
+                                      style={{
+                                        width: `${Math.min(100, progress)}%`,
+                                      }}
+                                    />
+                                  </div>
+                                )}
                                 <span className="small muted">
-                                  {num(qty)} / {num(p.contract_quantity)}{' '}
-                                  {p.production_unit} · {p.primary_activity}
+                                  {canCosts && <>{num(qty)} / </>}{' '}
+                                  {num(p.contract_quantity)} {p.production_unit}{' '}
+                                  · {p.primary_activity}
                                 </span>
                               </div>
-                              <div className="align-right">
-                                <strong>
-                                  {currency(
-                                    obs.reduce((s, o) => s + o.total_cents, 0),
-                                  )}
-                                </strong>
-                                <small className="muted">direct cost</small>
-                              </div>
+                              {canCosts && (
+                                <div className="align-right">
+                                  <strong>
+                                    {currency(
+                                      obs.reduce(
+                                        (s, o) => s + o.total_cents,
+                                        0,
+                                      ),
+                                    )}
+                                  </strong>
+                                  <small className="muted">direct cost</small>
+                                </div>
+                              )}
                               <ChevronRight size={17} />
                             </a>
                           )
@@ -492,19 +542,21 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
                       <ReportList reports={reports.slice(0, 5)} />
                     </Panel>
                   </div>
-                  <div className="insight-strip">
-                    <ChartNoAxesCombined size={26} />
-                    <div>
-                      <h3>Good estimates begin with real observations.</h3>
-                      <p>
-                        Every approved report adds a traceable cost and
-                        production record. No blended guesses.
-                      </p>
+                  {canCosts && (
+                    <div className="insight-strip">
+                      <ChartNoAxesCombined size={26} />
+                      <div>
+                        <h3>Good estimates begin with real observations.</h3>
+                        <p>
+                          Every approved report adds a traceable cost and
+                          production record. No blended guesses.
+                        </p>
+                      </div>
+                      <a href="#intelligence" className="text-link">
+                        Explore intelligence <ArrowUpRight size={16} />
+                      </a>
                     </div>
-                    <a href="#intelligence" className="text-link">
-                      Explore intelligence <ArrowUpRight size={16} />
-                    </a>
-                  </div>
+                  )}
                 </>
               )}
               {page === 'projects' && !id && (
@@ -593,6 +645,7 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
                   data={data}
                   observations={intel.observations}
                   reports={reports}
+                  user={user}
                   manager={manager}
                   writer={writer}
                   refresh={refresh}
@@ -651,9 +704,14 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
                   refresh={refresh}
                 />
               )}
-              {page === 'intelligence' && (
-                <IntelligencePage initial={intel} projects={projects} />
-              )}
+              {page === 'intelligence' &&
+                (canCosts ? (
+                  <IntelligencePage initial={intel} projects={projects} />
+                ) : (
+                  <Empty title="Access restricted">
+                    Your role cannot view cost intelligence.
+                  </Empty>
+                ))}
               {page === 'admin' && (
                 <Admin data={data} user={user} refresh={refresh} />
               )}
